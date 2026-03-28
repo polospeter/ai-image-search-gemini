@@ -22,6 +22,7 @@ def get_clients():
     collection = chroma_client.get_or_create_collection(
         COLLECTION_NAME,
         embedding_function=None,
+        metadata={"hnsw:space": "cosine"},
     )
     return genai_client, collection
 
@@ -71,7 +72,7 @@ if search and query.strip():
                 st.warning("Image unavailable")
 
             st.caption(filename)
-            similarity = max(0, 100 - dist * 10)
+            similarity = max(0, (1.0 - dist) * 100)
             st.caption(f"Similarity: {similarity:.0f}%")
 
             if os.path.exists(path):
