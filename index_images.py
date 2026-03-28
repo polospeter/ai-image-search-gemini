@@ -1,5 +1,5 @@
+import asyncio
 import os
-import time
 
 from google import genai
 from google.genai import types
@@ -12,7 +12,7 @@ COLLECTION_NAME = "images"
 EMBED_MODEL = "gemini-embedding-2-preview"
 EMBED_PROMPT = "What is shown in this image?"
 MAX_IMAGES = 200
-RATE_LIMIT_DELAY = 0.5
+CONCURRENCY = 10
 
 MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 
@@ -41,36 +41,51 @@ to_index = [f for f in to_index if f.name not in existing_ids]
 
 print(f"Images to index: {len(to_index)} (skipping {MAX_IMAGES - len(to_index)} already indexed)")
 
-for i, entry in enumerate(to_index, 1):
+completed = 0
+total = len(to_index)
+semaphore = None  # set in main()
+
+
+async def embed_and_store(entry):
+    global completed
     ext = os.path.splitext(entry.name)[1].lower()
     mime_type = MIME_MAP[ext]
 
-    try:
+    async with semaphore:
         with open(entry.path, "rb") as f:
             image_bytes = f.read()
 
-        response = genai_client.models.embed_content(
-            model=EMBED_MODEL,
-            contents=[EMBED_PROMPT, types.Part.from_bytes(data=image_bytes, mime_type=mime_type)],
-        )
-        vector = list(response.embeddings[0].values)
+        for attempt in range(3):
+            try:
+                response = await genai_client.aio.models.embed_content(
+                    model=EMBED_MODEL,
+                    contents=[EMBED_PROMPT, types.Part.from_bytes(data=image_bytes, mime_type=mime_type)],
+                )
+                vector = list(response.embeddings[0].values)
+                collection.upsert(
+                    ids=[entry.name],
+                    embeddings=[vector],
+                    metadatas=[{"filename": entry.name, "path": entry.path}],
+                )
+                completed += 1
+                if completed % 10 == 0 or completed == total:
+                    print(f"[{completed}/{total}] Indexed: {entry.name}")
+                return
+            except Exception as e:
+                if "ResourceExhausted" in type(e).__name__ or "429" in str(e):
+                    wait = 60 * (attempt + 1)
+                    print(f"Rate limit hit, sleeping {wait}s...")
+                    await asyncio.sleep(wait)
+                else:
+                    print(f"Error on {entry.name}: {e}")
+                    return
 
-        collection.upsert(
-            ids=[entry.name],
-            embeddings=[vector],
-            metadatas=[{"filename": entry.name, "path": entry.path}],
-        )
 
-        if i % 10 == 0 or i == len(to_index):
-            print(f"[{i}/{len(to_index)}] Indexed: {entry.name}")
+async def main():
+    global semaphore
+    semaphore = asyncio.Semaphore(CONCURRENCY)
+    await asyncio.gather(*[embed_and_store(entry) for entry in to_index])
+    print(f"\nDone. Collection '{COLLECTION_NAME}' now has {collection.count()} images.")
 
-        time.sleep(RATE_LIMIT_DELAY)
 
-    except Exception as e:
-        if "ResourceExhausted" in type(e).__name__ or "429" in str(e):
-            print(f"Rate limit hit, sleeping 60s...")
-            time.sleep(60)
-        else:
-            print(f"Error on {entry.name}: {e}")
-
-print(f"\nDone. Collection '{COLLECTION_NAME}' now has {collection.count()} images.")
+asyncio.run(main())
