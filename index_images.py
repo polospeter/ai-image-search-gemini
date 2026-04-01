@@ -1,5 +1,6 @@
 import asyncio
 import os
+from tqdm.asyncio import tqdm
 
 from google import genai
 from google.genai import types
@@ -11,7 +12,6 @@ DB_PATH = "./chroma_db"
 COLLECTION_NAME = "images"
 EMBED_MODEL = "gemini-embedding-2-preview"
 EMBED_PROMPT = "What is shown in this image?"
-MAX_IMAGES = 200
 CONCURRENCY = 10
 
 MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
@@ -33,21 +33,18 @@ all_files = [
     if f.is_file() and os.path.splitext(f.name)[1].lower() in MIME_MAP
 ]
 all_files.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-to_index = all_files[:MAX_IMAGES]
+to_index = all_files
 
 # Skip already-indexed files
 existing_ids = set(collection.get(include=[])["ids"])
 to_index = [f for f in to_index if f.name not in existing_ids]
 
-print(f"Images to index: {len(to_index)} (skipping {MAX_IMAGES - len(to_index)} already indexed)")
+print(f"Images to index: {len(to_index)} (skipping {len(all_files) - len(to_index)} already indexed)")
 
-completed = 0
-total = len(to_index)
 semaphore = None  # set in main()
 
 
-async def embed_and_store(entry):
-    global completed
+async def embed_and_store(entry, progress):
     ext = os.path.splitext(entry.name)[1].lower()
     mime_type = MIME_MAP[ext]
 
@@ -67,24 +64,23 @@ async def embed_and_store(entry):
                     embeddings=[vector],
                     metadatas=[{"filename": entry.name, "path": entry.path}],
                 )
-                completed += 1
-                if completed % 10 == 0 or completed == total:
-                    print(f"[{completed}/{total}] Indexed: {entry.name}")
+                progress.update(1)
                 return
             except Exception as e:
                 if "ResourceExhausted" in type(e).__name__ or "429" in str(e):
                     wait = 60 * (attempt + 1)
-                    print(f"Rate limit hit, sleeping {wait}s...")
+                    progress.write(f"Rate limit hit, sleeping {wait}s...")
                     await asyncio.sleep(wait)
                 else:
-                    print(f"Error on {entry.name}: {e}")
+                    progress.write(f"Error on {entry.name}: {e}")
                     return
 
 
 async def main():
     global semaphore
     semaphore = asyncio.Semaphore(CONCURRENCY)
-    await asyncio.gather(*[embed_and_store(entry) for entry in to_index])
+    with tqdm(total=len(to_index), desc="images", unit="img") as progress:
+        await asyncio.gather(*[embed_and_store(entry, progress) for entry in to_index])
     print(f"\nDone. Collection '{COLLECTION_NAME}' now has {collection.count()} images.")
 
 

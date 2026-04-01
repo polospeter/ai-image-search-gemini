@@ -16,14 +16,12 @@
       flex-direction: column;
     }
 
-    /* Scrollable results area */
     #results-area {
       flex: 1;
       overflow-y: auto;
       padding: 20px 20px 0;
     }
 
-    /* Empty state */
     #empty {
       height: 100%;
       display: flex;
@@ -55,6 +53,30 @@
       object-fit: cover;
       will-change: transform;
     }
+    .card[draggable="true"] { cursor: grab; }
+    .card[draggable="true"]:active { cursor: grabbing; }
+    .card video {
+      display: none;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      object-fit: cover;
+    }
+    .card-play-badge {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.55);
+      backdrop-filter: blur(4px);
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      color: #fff;
+      pointer-events: none;
+    }
     .card-overlay {
       position: absolute;
       inset: 0;
@@ -85,7 +107,25 @@
     }
     .card-btn:hover { background: rgba(255,255,255,0.22); }
 
-    /* Skeleton */
+    .flag-btn {
+      position: absolute; top: 7px; left: 8px;
+      width: 26px; height: 26px;
+      display: none; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.55); backdrop-filter: blur(4px);
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 50%;
+      color: rgba(255,255,255,0.45); font-size: 11px;
+      cursor: pointer; transition: color 0.12s, background 0.12s; z-index: 2;
+      line-height: 1;
+    }
+    .flag-btn:hover { color: #e05252; background: rgba(0,0,0,0.75); border-color: rgba(224,82,82,0.4); }
+    body.character-search-active .flag-btn { display: flex; }
+
+    @keyframes flag-fade {
+      from { opacity: 1; transform: scale(1); }
+      to   { opacity: 0; transform: scale(0.94); }
+    }
+    .card.flagging { animation: flag-fade 0.3s ease forwards; pointer-events: none; }
+
     .skeleton {
       border-radius: 6px;
       aspect-ratio: 16/9;
@@ -98,7 +138,6 @@
       100% { background-position: -200% 0; }
     }
 
-    /* Bottom bar */
     #bottom-bar {
       padding: 16px 20px;
       background: #0a0a0a;
@@ -124,7 +163,6 @@
     form:focus-within { border-color: #404040; }
     form.drag-over { border-color: #555; background: #1a1a1a; }
 
-    /* Image preview inside search bar */
     #img-preview {
       display: none;
       align-items: center;
@@ -186,14 +224,123 @@
       gap: 6px;
       color: #333;
     }
-    .controls input[type="range"] { accent-color: #555; width: 72px; cursor: pointer; }
-    .controls span { color: #444; min-width: 16px; }
+    .controls input[type="number"] {
+      width: 64px;
+      background: #161616;
+      border: 1px solid #272727;
+      border-radius: 7px;
+      color: #e0e0e0;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 4px 8px;
+      outline: none;
+      text-align: center;
+      transition: border-color 0.15s;
+      -moz-appearance: textfield;
+    }
+    .controls input[type="number"]::-webkit-inner-spin-button,
+    .controls input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; }
+    .controls input[type="number"]:focus { border-color: #404040; }
+    .controls span { color: #444; }
+
+    /* Character filter bar */
+    #character-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      overflow-x: auto;
+      width: 100%;
+      max-width: 600px;
+      scrollbar-width: none;
+      padding: 2px 0 22px;
+    }
+    #character-bar::-webkit-scrollbar { display: none; }
+    #character-bar:empty { display: none; }
+
+    .char-pill {
+      position: relative;
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+
+    .char-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      object-fit: cover;
+      object-position: top center;
+      border: 2px solid #2a2a2a;
+      transition: border-color 0.15s, opacity 0.15s;
+      background: #1a1a1a;
+      display: block;
+    }
+    .char-pill:hover .char-avatar { border-color: #555; opacity: 0.9; }
+    .char-pill.selected .char-avatar { border-color: #fff; }
+
+    .char-avatar-placeholder {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      border: 2px solid #2a2a2a;
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      color: #555;
+      flex-shrink: 0;
+    }
+    .char-pill:hover .char-avatar-placeholder { border-color: #555; }
+    .char-pill.selected .char-avatar-placeholder { border-color: #fff; }
+
+    .char-name {
+      position: absolute;
+      top: calc(100% + 5px);
+      left: 50%;
+      transform: translateX(-50%);
+      color: #777;
+      font-size: 10px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .char-pill:hover .char-name,
+    .char-pill.selected .char-name { opacity: 1; color: #ccc; }
+
+    /* Mode toggle */
+    .mode-toggle {
+      display: flex;
+      background: #161616;
+      border: 1px solid #272727;
+      border-radius: 8px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .mode-btn {
+      background: none;
+      border: none;
+      color: #444;
+      font-size: 12px;
+      font-weight: 500;
+      padding: 4px 12px;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+      font-family: inherit;
+    }
+    .mode-btn.active {
+      background: #fff;
+      color: #0a0a0a;
+      border-radius: 6px;
+      margin: 2px;
+    }
   </style>
 </head>
 <body>
 
 <div id="results-area">
-  <div id="empty">200 images indexed — search to begin</div>
+  <div id="empty">— search to begin</div>
   <div id="grid" style="display:none"></div>
 </div>
 
@@ -206,51 +353,199 @@
     <input type="text" id="query" placeholder="Describe what you're looking for…" autocomplete="off" spellcheck="false" />
     <button type="submit" id="search-btn">Search</button>
   </form>
+  <div id="character-bar"></div>
   <div id="meta-row">
+    <div class="mode-toggle">
+      <button class="mode-btn active" id="btn-images" type="button">Images</button>
+      <button class="mode-btn" id="btn-videos" type="button">Videos</button>
+    </div>
     <span id="status"></span>
     <div class="controls">
       <span>Results</span>
-      <input type="range" id="top-n" min="3" max="30" value="12" />
-      <span id="top-n-val">12</span>
+      <input type="number" id="top-n" min="1" max="500" value="30" />
     </div>
     <div class="controls">
-      <span>Min match</span>
-      <input type="range" id="threshold" min="0" max="90" value="35" />
-      <span id="threshold-val">35%</span>
+      <span>Min match %</span>
+      <input type="number" id="threshold" min="0" max="100" value="30" />
     </div>
   </div>
 </div>
 
 <script>
-  const form = document.getElementById('search-form');
-  const queryInput = document.getElementById('query');
-  const searchBtn = document.getElementById('search-btn');
-  const topNSlider = document.getElementById('top-n');
-  const topNVal = document.getElementById('top-n-val');
+  const form        = document.getElementById('search-form');
+  const queryInput  = document.getElementById('query');
+  const searchBtn   = document.getElementById('search-btn');
+  const topNSlider  = document.getElementById('top-n');
   const thresholdSlider = document.getElementById('threshold');
-  const thresholdVal = document.getElementById('threshold-val');
-  const grid = document.getElementById('grid');
-  const empty = document.getElementById('empty');
-  const status = document.getElementById('status');
-  const imgPreview = document.getElementById('img-preview');
-  const imgThumb = document.getElementById('img-thumb');
-  const imgClear = document.getElementById('img-clear');
+  const grid        = document.getElementById('grid');
+  const empty       = document.getElementById('empty');
+  const status      = document.getElementById('status');
+  const imgPreview  = document.getElementById('img-preview');
+  const imgThumb    = document.getElementById('img-thumb');
+  const imgClear    = document.getElementById('img-clear');
+  const btnImages   = document.getElementById('btn-images');
+  const btnVideos   = document.getElementById('btn-videos');
 
   let imageFile = null;
+  let currentMode = 'images';
+  let currentSearchCharacter = null;
 
-  topNSlider.addEventListener('input', () => { topNVal.textContent = topNSlider.value; });
-  thresholdSlider.addEventListener('input', () => { thresholdVal.textContent = thresholdSlider.value + '%'; });
+  // ── Character bar ────────────────────────────────────────────────────────
+  const characterBar = document.getElementById('character-bar');
 
-  fetch('/count').then(r => r.json()).then(d => {
-    empty.textContent = `${d.count} images indexed — search to begin`;
+  function clearCharacterSelection() {
+    currentSearchCharacter = null;
+    document.body.classList.remove('character-search-active');
+    characterBar.querySelectorAll('.char-pill').forEach(p => p.classList.remove('selected'));
+  }
+
+  async function searchByCharacter(charId) {
+    const topN = parseInt(topNSlider.value);
+    searchBtn.disabled = true;
+    searchBtn.textContent = 'Searching…';
+    status.textContent = '';
+    empty.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.innerHTML = Array(Math.min(topN, 20)).fill('<div class="skeleton"></div>').join('');
+
+    try {
+      const res = await fetch('/search-by-character', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          character_id: charId,
+          mode: currentMode,
+          top_n: topN,
+          min_similarity: parseFloat(thresholdSlider.value),
+        }),
+      });
+      if (!res.ok) throw new Error(`Server error ${res.status}`);
+      const { results } = await res.json();
+      renderResults(results);
+    } catch (err) {
+      status.textContent = `Error: ${err.message}`;
+      clearResults();
+    } finally {
+      searchBtn.disabled = false;
+      searchBtn.textContent = 'Search';
+    }
+  }
+
+  function toggleCharacter(charId) {
+    const pills = characterBar.querySelectorAll('.char-pill');
+    if (currentSearchCharacter === charId) {
+      currentSearchCharacter = null;
+      document.body.classList.remove('character-search-active');
+      pills.forEach(p => p.classList.remove('selected'));
+      clearResults();
+      updateCount();
+      return;
+    }
+    currentSearchCharacter = charId;
+    document.body.classList.add('character-search-active');
+    pills.forEach(p => p.classList.toggle('selected', p.dataset.id === charId));
+    searchByCharacter(charId);
+  }
+
+  async function loadCharacters() {
+    try {
+      const { characters } = await fetch('/characters').then(r => r.json());
+      characterBar.innerHTML = '';
+      for (const char of characters) {
+        const pill = document.createElement('div');
+        pill.className = 'char-pill';
+        pill.dataset.id = char.id;
+        pill.title = '';
+
+        const img = document.createElement('img');
+        img.className = 'char-avatar';
+        img.src = `/character-avatar/${char.id}`;
+        img.alt = char.name;
+        img.onerror = () => {
+          const placeholder = document.createElement('div');
+          placeholder.className = 'char-avatar-placeholder';
+          placeholder.textContent = char.name[0];
+          img.replaceWith(placeholder);
+        };
+
+        const label = document.createElement('div');
+        label.className = 'char-name';
+        label.textContent = char.name;
+
+        pill.appendChild(img);
+        pill.appendChild(label);
+        pill.addEventListener('click', () => toggleCharacter(char.id));
+        characterBar.appendChild(pill);
+      }
+    } catch (e) {
+      console.warn('Could not load characters', e);
+    }
+  }
+
+  loadCharacters();
+
+  // ── Count label ──────────────────────────────────────────────────────────
+  function updateCount() {
+    const endpoint = currentMode === 'videos' ? '/count-videos' : '/count';
+    const label    = currentMode === 'videos' ? 'videos' : 'images';
+    fetch(endpoint).then(r => r.json()).then(d => {
+      empty.textContent = `${d.count} ${label} indexed — search to begin`;
+    });
+  }
+  updateCount();
+
+  // ── Mode toggle ──────────────────────────────────────────────────────────
+  function clearResults() {
+    grid.innerHTML = '';
+    grid.style.display = 'none';
+    empty.style.display = 'flex';
+    status.textContent = '';
+  }
+
+  btnImages.addEventListener('click', () => {
+    if (currentMode === 'images') return;
+    currentMode = 'images';
+    btnImages.classList.add('active');
+    btnVideos.classList.remove('active');
+    clearCharacterSelection();
+    clearResults();
+    updateCount();
   });
 
-  // Drag-and-drop
-  form.addEventListener('dragover', e => { e.preventDefault(); form.classList.add('drag-over'); });
+  btnVideos.addEventListener('click', () => {
+    if (currentMode === 'videos') return;
+    currentMode = 'videos';
+    btnVideos.classList.add('active');
+    btnImages.classList.remove('active');
+    // clear any image search state
+    imageFile = null;
+    imgPreview.style.display = 'none';
+    imgThumb.src = '';
+    queryInput.value = '';
+    queryInput.placeholder = 'Describe what you\'re looking for…';
+    clearCharacterSelection();
+    clearResults();
+    updateCount();
+  });
+
+  // ── Drag-and-drop (images mode only) ────────────────────────────────────
+  form.addEventListener('dragover', e => {
+    if (currentMode === 'videos') return;
+    e.preventDefault();
+    form.classList.add('drag-over');
+  });
   form.addEventListener('dragleave', () => form.classList.remove('drag-over'));
-  form.addEventListener('drop', e => {
+  form.addEventListener('drop', async e => {
     e.preventDefault();
     form.classList.remove('drag-over');
+    if (currentMode === 'videos') return;
+
+    const resultFilename = e.dataTransfer.getData('application/x-result-filename');
+    if (resultFilename) {
+      const blob = await fetch(`/image/${encodeURIComponent(resultFilename)}`).then(r => r.blob());
+      setImageFile(new File([blob], resultFilename, { type: blob.type }));
+      return;
+    }
     const file = e.dataTransfer.files[0];
     if (file && file.type.startsWith('image/')) setImageFile(file);
   });
@@ -263,7 +558,6 @@
     queryInput.disabled = false;
     queryInput.focus();
     thresholdSlider.value = 90;
-    thresholdVal.textContent = '90%';
   }
 
   imgClear.addEventListener('click', () => {
@@ -272,50 +566,129 @@
     imgThumb.src = '';
     queryInput.value = '';
     queryInput.placeholder = 'Describe what you\'re looking for…';
-    thresholdSlider.value = 35;
-    thresholdVal.textContent = '35%';
+    thresholdSlider.value = 30;
     queryInput.focus();
   });
 
+  // ── Render results ───────────────────────────────────────────────────────
   function renderResults(results) {
+    const isVideos   = currentMode === 'videos';
+    const imgPrefix  = isVideos ? '/frame/'      : '/image/';
+    const openPrefix = isVideos ? '/open-video/' : '/open/';
+
     status.textContent = `${results.length} results`;
     grid.innerHTML = '';
     const frag = document.createDocumentFragment();
+
     for (const item of results) {
       const encoded = encodeURIComponent(item.filename);
       const card = document.createElement('div');
       card.className = 'card';
-      card.innerHTML = `
-        <img src="/image/${encoded}" loading="eager" decoding="async" alt="">
-        <div class="card-overlay">
-          <div class="card-similarity">${item.similarity}%</div>
-          <div class="card-name">${item.filename}</div>
-          <button class="card-btn" data-fn="${encoded}">Open in Finder</button>
-        </div>`;
+
+      if (!isVideos) {
+        card.draggable = true;
+        card.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('application/x-result-filename', item.filename);
+          e.dataTransfer.effectAllowed = 'copy';
+        });
+      }
+
+      if (isVideos) {
+        card.innerHTML = `
+          <img src="/frame/${encoded}" loading="lazy" decoding="async" alt="">
+          <video src="/video/${encoded}" preload="none" muted loop playsinline></video>
+          <div class="card-play-badge">▶</div>
+          <div class="card-overlay">
+            <div class="card-similarity">${item.similarity}%</div>
+            <div class="card-name">${item.filename}</div>
+            <button class="card-btn" data-fn="${encoded}" data-prefix="${openPrefix}">Open in Finder</button>
+          </div>`;
+
+        const img = card.querySelector('img');
+        const vid = card.querySelector('video');
+        let hoverTimer = null;
+        card.addEventListener('mouseenter', () => {
+          hoverTimer = setTimeout(() => {
+            img.style.display = 'none';
+            vid.style.display = 'block';
+            vid.play();
+          }, 200);
+        });
+        card.addEventListener('mouseleave', () => {
+          clearTimeout(hoverTimer);
+          vid.pause();
+          vid.currentTime = 0;
+          vid.style.display = 'none';
+          img.style.display = 'block';
+        });
+      } else {
+        card.innerHTML = `
+          <img src="${imgPrefix}${encoded}" loading="lazy" decoding="async" alt="">
+          <button class="flag-btn" title="Not this character">✕</button>
+          <div class="card-overlay">
+            <div class="card-similarity">${item.similarity}%</div>
+            <div class="card-name">${item.filename}</div>
+            <button class="card-btn" data-fn="${encoded}" data-prefix="${openPrefix}">Open in Finder</button>
+          </div>`;
+      }
       frag.appendChild(card);
     }
+
     grid.appendChild(frag);
     grid.querySelectorAll('.card-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', e => {
         e.stopPropagation();
-        fetch(`/open/${btn.dataset.fn}`);
+        fetch(`${btn.dataset.prefix}${btn.dataset.fn}`);
+      });
+    });
+
+    grid.querySelectorAll('.flag-btn').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.stopPropagation();
+        const card = btn.closest('.card');
+        const filename = card.querySelector('.card-name').textContent;
+        try {
+          const res = await fetch('/flag', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ character_id: currentSearchCharacter, filename }),
+          });
+          if (!res.ok) throw new Error();
+          card.classList.add('flagging');
+          card.addEventListener('animationend', () => card.remove(), { once: true });
+        } catch {
+          btn.textContent = '!';
+          btn.style.color = '#e05252';
+          setTimeout(() => { btn.textContent = '✕'; btn.style.color = ''; }, 2000);
+        }
       });
     });
   }
 
+  // ── Search ───────────────────────────────────────────────────────────────
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    clearCharacterSelection();
     const topN = parseInt(topNSlider.value);
     searchBtn.disabled = true;
     searchBtn.textContent = 'Searching…';
     status.textContent = '';
     empty.style.display = 'none';
     grid.style.display = 'grid';
-    grid.innerHTML = Array(topN).fill('<div class="skeleton"></div>').join('');
+    grid.innerHTML = Array(Math.min(topN, 20)).fill('<div class="skeleton"></div>').join('');
 
     try {
       let res;
-      if (imageFile) {
+
+      if (currentMode === 'videos') {
+        const query = queryInput.value.trim();
+        if (!query) { searchBtn.disabled = false; searchBtn.textContent = 'Search'; clearResults(); return; }
+        res = await fetch('/search-videos', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, top_n: topN, min_similarity: parseFloat(thresholdSlider.value) }),
+        });
+      } else if (imageFile) {
         const fd = new FormData();
         fd.append('file', imageFile);
         fd.append('top_n', topN);
@@ -324,14 +697,7 @@
         res = await fetch('/search-by-image', { method: 'POST', body: fd });
       } else {
         const query = queryInput.value.trim();
-        if (!query) {
-          searchBtn.disabled = false;
-          searchBtn.textContent = 'Search';
-          grid.innerHTML = '';
-          empty.style.display = 'flex';
-          grid.style.display = 'none';
-          return;
-        }
+        if (!query) { searchBtn.disabled = false; searchBtn.textContent = 'Search'; clearResults(); return; }
         res = await fetch('/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -345,9 +711,7 @@
 
     } catch (err) {
       status.textContent = `Error: ${err.message}`;
-      grid.innerHTML = '';
-      empty.style.display = 'flex';
-      grid.style.display = 'none';
+      clearResults();
     } finally {
       searchBtn.disabled = false;
       searchBtn.textContent = 'Search';
