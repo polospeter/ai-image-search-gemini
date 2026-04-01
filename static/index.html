@@ -358,6 +358,7 @@
     <div class="mode-toggle">
       <button class="mode-btn active" id="btn-images" type="button">Images</button>
       <button class="mode-btn" id="btn-videos" type="button">Videos</button>
+      <button class="mode-btn" id="btn-visual" type="button">Visual</button>
     </div>
     <span id="status"></span>
     <div class="controls">
@@ -385,6 +386,7 @@
   const imgClear    = document.getElementById('img-clear');
   const btnImages   = document.getElementById('btn-images');
   const btnVideos   = document.getElementById('btn-videos');
+  const btnVisual   = document.getElementById('btn-visual');
 
   let imageFile = null;
   let currentMode = 'images';
@@ -486,10 +488,12 @@
 
   // ── Count label ──────────────────────────────────────────────────────────
   function updateCount() {
-    const endpoint = currentMode === 'videos' ? '/count-videos' : '/count';
+    const endpoint = currentMode === 'videos' ? '/count-videos' : currentMode === 'visual' ? '/count-visual' : '/count';
     const label    = currentMode === 'videos' ? 'videos' : 'images';
     fetch(endpoint).then(r => r.json()).then(d => {
-      empty.textContent = `${d.count} ${label} indexed — search to begin`;
+      empty.textContent = currentMode === 'visual'
+        ? `${d.count} images indexed — drop an image to search visually`
+        : `${d.count} ${label} indexed — search to begin`;
     });
   }
   updateCount();
@@ -507,6 +511,13 @@
     currentMode = 'images';
     btnImages.classList.add('active');
     btnVideos.classList.remove('active');
+    btnVisual.classList.remove('active');
+    imageFile = null;
+    imgPreview.style.display = 'none';
+    imgThumb.src = '';
+    queryInput.value = '';
+    queryInput.disabled = false;
+    queryInput.placeholder = 'Describe what you\'re looking for…';
     clearCharacterSelection();
     clearResults();
     updateCount();
@@ -517,18 +528,36 @@
     currentMode = 'videos';
     btnVideos.classList.add('active');
     btnImages.classList.remove('active');
-    // clear any image search state
+    btnVisual.classList.remove('active');
     imageFile = null;
     imgPreview.style.display = 'none';
     imgThumb.src = '';
     queryInput.value = '';
+    queryInput.disabled = false;
     queryInput.placeholder = 'Describe what you\'re looking for…';
     clearCharacterSelection();
     clearResults();
     updateCount();
   });
 
-  // ── Drag-and-drop (images mode only) ────────────────────────────────────
+  btnVisual.addEventListener('click', () => {
+    if (currentMode === 'visual') return;
+    currentMode = 'visual';
+    btnVisual.classList.add('active');
+    btnImages.classList.remove('active');
+    btnVideos.classList.remove('active');
+    imageFile = null;
+    imgPreview.style.display = 'none';
+    imgThumb.src = '';
+    queryInput.value = '';
+    queryInput.disabled = true;
+    queryInput.placeholder = 'Drop or paste an image to search visually…';
+    clearCharacterSelection();
+    clearResults();
+    updateCount();
+  });
+
+  // ── Drag-and-drop (images + visual mode) ────────────────────────────────
   form.addEventListener('dragover', e => {
     if (currentMode === 'videos') return;
     e.preventDefault();
@@ -542,7 +571,8 @@
 
     const resultFilename = e.dataTransfer.getData('application/x-result-filename');
     if (resultFilename) {
-      const blob = await fetch(`/image/${encodeURIComponent(resultFilename)}`).then(r => r.blob());
+      const srcPrefix = currentMode === 'visual' ? '/image/' : '/image/';
+      const blob = await fetch(`${srcPrefix}${encodeURIComponent(resultFilename)}`).then(r => r.blob());
       setImageFile(new File([blob], resultFilename, { type: blob.type }));
       return;
     }
@@ -550,14 +580,26 @@
     if (file && file.type.startsWith('image/')) setImageFile(file);
   });
 
+  // Paste support
+  document.addEventListener('paste', e => {
+    if (currentMode === 'videos') return;
+    const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
+    if (item) setImageFile(item.getAsFile());
+  });
+
   function setImageFile(file) {
     imageFile = file;
     imgThumb.src = URL.createObjectURL(file);
     imgPreview.style.display = 'flex';
-    queryInput.placeholder = 'Describe the character (optional)…';
-    queryInput.disabled = false;
-    queryInput.focus();
-    thresholdSlider.value = 90;
+    if (currentMode === 'visual') {
+      // Auto-submit immediately — no text description needed
+      form.requestSubmit();
+    } else {
+      queryInput.placeholder = 'Describe the character (optional)…';
+      queryInput.disabled = false;
+      queryInput.focus();
+      thresholdSlider.value = 90;
+    }
   }
 
   imgClear.addEventListener('click', () => {
@@ -680,7 +722,14 @@
     try {
       let res;
 
-      if (currentMode === 'videos') {
+      if (currentMode === 'visual') {
+        if (!imageFile) { searchBtn.disabled = false; searchBtn.textContent = 'Search'; clearResults(); return; }
+        const fd = new FormData();
+        fd.append('file', imageFile);
+        fd.append('top_n', topN);
+        fd.append('min_similarity', thresholdSlider.value);
+        res = await fetch('/search-by-visual-image', { method: 'POST', body: fd });
+      } else if (currentMode === 'videos') {
         const query = queryInput.value.trim();
         if (!query) { searchBtn.disabled = false; searchBtn.textContent = 'Search'; clearResults(); return; }
         res = await fetch('/search-videos', {

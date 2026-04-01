@@ -23,6 +23,8 @@ CHARACTER_EMBED_PROMPT = "Describe the main character, creature, or person in th
 
 MIME_MAP = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
 VIDEO_MIME_MAP = {".mp4": "video/mp4", ".mov": "video/quicktime"}
+VISUAL_COLLECTION_NAME = "visual"
+VISUAL_MODEL_NAME = "apple/aimv2-3B-patch14-336"
 
 OBSIDIAN_VAULT = "/Users/peter.polos/Documents/Obsidian Vault"
 CHARACTER_AVATAR_DIRS = [
@@ -98,6 +100,7 @@ chroma_client = chromadb.PersistentClient(
 collection = chroma_client.get_or_create_collection(COLLECTION_NAME, embedding_function=None, metadata={"hnsw:space": "cosine"})
 char_collection = chroma_client.get_or_create_collection(CHARACTER_COLLECTION_NAME, embedding_function=None, metadata={"hnsw:space": "cosine"})
 video_collection = chroma_client.get_or_create_collection(VIDEO_COLLECTION_NAME, embedding_function=None, metadata={"hnsw:space": "cosine"})
+visual_collection = chroma_client.get_or_create_collection(VISUAL_COLLECTION_NAME, embedding_function=None, metadata={"hnsw:space": "cosine"})
 
 # Build filename → path lookups from ChromaDB metadata
 _meta = collection.get(include=["metadatas"])
@@ -106,6 +109,9 @@ PATH_LOOKUP = {m["filename"]: m["path"] for m in _meta["metadatas"]}
 _video_meta = video_collection.get(include=["metadatas"])
 VIDEO_PATH_LOOKUP  = {m["filename"]: m["video_path"] for m in _video_meta["metadatas"]}
 VIDEO_FRAME_LOOKUP = {m["filename"]: m["frame_path"] for m in _video_meta["metadatas"]}
+
+_visual_meta = visual_collection.get(include=["metadatas"])
+VISUAL_PATH_LOOKUP = {m["filename"]: m["path"] for m in _visual_meta["metadatas"]}
 
 EXCLUSIONS_PATH = "./exclusions.json"
 
@@ -120,6 +126,23 @@ def _load_exclusions() -> dict:
 
 
 exclusions: dict[str, set] = _load_exclusions()
+
+# ── AIMv2 visual model (lazy-loaded on first request) ─────────────────────────
+_aim_model = None
+_aim_processor = None
+
+
+def _get_aim_model():
+    global _aim_model, _aim_processor
+    if _aim_model is None:
+        import torch
+        from transformers import AutoImageProcessor, AutoModel
+        _aim_processor = AutoImageProcessor.from_pretrained(VISUAL_MODEL_NAME)
+        _aim_model = AutoModel.from_pretrained(VISUAL_MODEL_NAME)
+        _device = "mps" if torch.backends.mps.is_available() else "cpu"
+        _aim_model = _aim_model.to(_device).eval()
+    return _aim_model, _aim_processor
+
 
 app = FastAPI()
 
@@ -374,6 +397,65 @@ async def flag_image(req: FlagRequest):
     with open(EXCLUSIONS_PATH, "w") as f:
         json.dump({cid: list(fns) for cid, fns in exclusions.items()}, f, indent=2)
     return {"ok": True}
+
+
+@app.post("/search-by-visual-image")
+async def search_by_visual_image(
+    file: UploadFile = File(...),
+    top_n: int = Form(30),
+    min_similarity: float = Form(30.0),
+):
+    import asyncio
+    import torch
+    import numpy as np
+    from PIL import Image as PILImage
+    import io
+
+    image_bytes = await file.read()
+    img = PILImage.open(io.BytesIO(image_bytes)).convert("RGB")
+
+    aim_model, aim_processor = await asyncio.get_event_loop().run_in_executor(
+        None, _get_aim_model
+    )
+
+    def _embed():
+        inputs = aim_processor(images=img, return_tensors="pt")
+        device = next(aim_model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
+        with torch.no_grad():
+            outputs = aim_model(**inputs)
+            emb = outputs.last_hidden_state.mean(dim=1)[0]
+            emb = emb / emb.norm()
+        return emb.cpu().float().numpy().tolist()
+
+    query_vector = await asyncio.get_event_loop().run_in_executor(None, _embed)
+
+    count = visual_collection.count()
+    if count == 0:
+        return {"results": []}
+
+    fetch_n = min(top_n * 3, count)
+    results = visual_collection.query(
+        query_embeddings=[query_vector],
+        n_results=fetch_n,
+        include=["metadatas", "distances"],
+    )
+
+    output = []
+    for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
+        sim = round(max(0.0, (1.0 - dist)) * 100, 1)
+        if sim < min_similarity:
+            continue
+        output.append({"filename": meta["filename"], "similarity": sim})
+        if len(output) == top_n:
+            break
+
+    return {"results": output}
+
+
+@app.get("/count-visual")
+async def count_visual():
+    return {"count": visual_collection.count()}
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
