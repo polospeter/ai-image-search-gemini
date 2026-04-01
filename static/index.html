@@ -46,14 +46,14 @@
       border-radius: 6px;
       overflow: hidden;
       background: #141414;
-      contain: layout paint; /* perf: isolate each card */
+      contain: layout paint;
     }
     .card img {
       display: block;
       width: 100%;
       aspect-ratio: 16 / 9;
       object-fit: cover;
-      will-change: transform; /* hint GPU layer */
+      will-change: transform;
     }
     .card-overlay {
       position: absolute;
@@ -119,9 +119,30 @@
       border: 1px solid #272727;
       border-radius: 12px;
       overflow: hidden;
-      transition: border-color 0.15s;
+      transition: border-color 0.15s, background 0.15s;
     }
     form:focus-within { border-color: #404040; }
+    form.drag-over { border-color: #555; background: #1a1a1a; }
+
+    /* Image preview inside search bar */
+    #img-preview {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 6px 6px 10px;
+      flex-shrink: 0;
+    }
+    #img-preview img { height: 32px; width: 32px; object-fit: cover; border-radius: 4px; }
+    #img-clear {
+      background: none;
+      border: none;
+      color: #555;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    #img-clear:hover { color: #aaa; }
 
     input[type="text"] {
       flex: 1;
@@ -178,6 +199,10 @@
 
 <div id="bottom-bar">
   <form id="search-form">
+    <div id="img-preview">
+      <img id="img-thumb" src="" alt="">
+      <button type="button" id="img-clear">×</button>
+    </div>
     <input type="text" id="query" placeholder="Describe what you're looking for…" autocomplete="off" spellcheck="false" />
     <button type="submit" id="search-btn">Search</button>
   </form>
@@ -207,6 +232,11 @@
   const grid = document.getElementById('grid');
   const empty = document.getElementById('empty');
   const status = document.getElementById('status');
+  const imgPreview = document.getElementById('img-preview');
+  const imgThumb = document.getElementById('img-thumb');
+  const imgClear = document.getElementById('img-clear');
+
+  let imageFile = null;
 
   topNSlider.addEventListener('input', () => { topNVal.textContent = topNSlider.value; });
   thresholdSlider.addEventListener('input', () => { thresholdVal.textContent = thresholdSlider.value + '%'; });
@@ -215,56 +245,103 @@
     empty.textContent = `${d.count} images indexed — search to begin`;
   });
 
+  // Drag-and-drop
+  form.addEventListener('dragover', e => { e.preventDefault(); form.classList.add('drag-over'); });
+  form.addEventListener('dragleave', () => form.classList.remove('drag-over'));
+  form.addEventListener('drop', e => {
+    e.preventDefault();
+    form.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) setImageFile(file);
+  });
+
+  function setImageFile(file) {
+    imageFile = file;
+    imgThumb.src = URL.createObjectURL(file);
+    imgPreview.style.display = 'flex';
+    queryInput.placeholder = 'Describe the character (optional)…';
+    queryInput.disabled = false;
+    queryInput.focus();
+    thresholdSlider.value = 90;
+    thresholdVal.textContent = '90%';
+  }
+
+  imgClear.addEventListener('click', () => {
+    imageFile = null;
+    imgPreview.style.display = 'none';
+    imgThumb.src = '';
+    queryInput.value = '';
+    queryInput.placeholder = 'Describe what you\'re looking for…';
+    thresholdSlider.value = 35;
+    thresholdVal.textContent = '35%';
+    queryInput.focus();
+  });
+
+  function renderResults(results) {
+    status.textContent = `${results.length} results`;
+    grid.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (const item of results) {
+      const encoded = encodeURIComponent(item.filename);
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <img src="/image/${encoded}" loading="eager" decoding="async" alt="">
+        <div class="card-overlay">
+          <div class="card-similarity">${item.similarity}%</div>
+          <div class="card-name">${item.filename}</div>
+          <button class="card-btn" data-fn="${encoded}">Open in Finder</button>
+        </div>`;
+      frag.appendChild(card);
+    }
+    grid.appendChild(frag);
+    grid.querySelectorAll('.card-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        fetch(`/open/${btn.dataset.fn}`);
+      });
+    });
+  }
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const query = queryInput.value.trim();
-    if (!query) return;
-
     const topN = parseInt(topNSlider.value);
     searchBtn.disabled = true;
     searchBtn.textContent = 'Searching…';
     status.textContent = '';
-
-    // Show skeletons
     empty.style.display = 'none';
     grid.style.display = 'grid';
     grid.innerHTML = Array(topN).fill('<div class="skeleton"></div>').join('');
 
     try {
-      const res = await fetch('/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query, top_n: topN, min_similarity: parseFloat(thresholdSlider.value) }),
-      });
+      let res;
+      if (imageFile) {
+        const fd = new FormData();
+        fd.append('file', imageFile);
+        fd.append('top_n', topN);
+        fd.append('min_similarity', thresholdSlider.value);
+        fd.append('description', queryInput.value.trim());
+        res = await fetch('/search-by-image', { method: 'POST', body: fd });
+      } else {
+        const query = queryInput.value.trim();
+        if (!query) {
+          searchBtn.disabled = false;
+          searchBtn.textContent = 'Search';
+          grid.innerHTML = '';
+          empty.style.display = 'flex';
+          grid.style.display = 'none';
+          return;
+        }
+        res = await fetch('/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, top_n: topN, min_similarity: parseFloat(thresholdSlider.value) }),
+        });
+      }
+
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const { results } = await res.json();
-
-      status.textContent = `${results.length} results`;
-      grid.innerHTML = '';
-
-      // Build fragment for single reflow
-      const frag = document.createDocumentFragment();
-      for (const item of results) {
-        const encoded = encodeURIComponent(item.filename);
-        const card = document.createElement('div');
-        card.className = 'card';
-        card.innerHTML = `
-          <img src="/image/${encoded}" loading="eager" decoding="async" alt="">
-          <div class="card-overlay">
-            <div class="card-similarity">${item.similarity}%</div>
-            <div class="card-name">${item.filename}</div>
-            <button class="card-btn" data-fn="${encoded}">Open in Finder</button>
-          </div>`;
-        frag.appendChild(card);
-      }
-      grid.appendChild(frag);
-
-      grid.querySelectorAll('.card-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          fetch(`/open/${btn.dataset.fn}`);
-        });
-      });
+      renderResults(results);
 
     } catch (err) {
       status.textContent = `Error: ${err.message}`;

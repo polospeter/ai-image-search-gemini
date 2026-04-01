@@ -8,9 +8,9 @@ from chromadb.config import Settings
 
 IMAGE_DIR = "/Users/peter.polos/Documents/Peter_Projects/Cineautoma/Movie_Projects/001_RAW_IMAGES"
 DB_PATH = "./chroma_db"
-COLLECTION_NAME = "images"
+COLLECTION_NAME = "characters"
 EMBED_MODEL = "gemini-embedding-2-preview"
-EMBED_PROMPT = "What is shown in this image?"
+EMBED_PROMPT = "Describe the main character, creature, or person in this image, including their appearance, species, design, and any distinctive visual features."
 MAX_IMAGES = 200
 CONCURRENCY = 10
 
