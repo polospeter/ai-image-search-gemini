@@ -12,7 +12,7 @@ Three separate ChromaDB collections serve different search modes:
 |---|---|---|---|
 | `images` | `index_images.py` | `"What is shown in this image?"` | General content search |
 | `characters` | `index_characters.py` | Character appearance description | Character / creature similarity search |
-| `videos` | `index_videos.py` | `"What is shown in this image?"` (on first frame) | Video clip search |
+| `videos` | `index_videos.py` | `"What is shown in this image?"` (on sampled frames) | Video clip search |
 
 ---
 
@@ -21,7 +21,7 @@ Three separate ChromaDB collections serve different search modes:
 - **Text search** — type a natural language query to find matching images
 - **Image drop search** — drag and drop (or paste) an image to find visually similar results using the `characters` collection
 - **Character search** — select a predefined character (e.g. Hooded Hunter, Tribal Woman, Mecha Wolves) to retrieve the best matching images or videos for that character's visual profile
-- **Video search** — find video clips by text query; results show a thumbnail of the first frame with a hover-to-play inline preview
+- **Video search** — find video clips by text query; results show a thumbnail and timestamp of the best matching frame with a hover-to-play inline preview
 - **Exclusions / flagging** — mark individual results as irrelevant for a character; flagged files are persisted to `exclusions.json` and filtered out of future searches
 - **Open in Finder** — click the folder icon on any result to reveal the source file in macOS Finder
 - **Incremental indexing** — all indexers skip already-indexed files so re-running is fast
@@ -35,11 +35,11 @@ Three separate ChromaDB collections serve different search modes:
 ├── server.py              # FastAPI backend — search endpoints + file serving
 ├── index_images.py        # Index all images → "images" collection
 ├── index_characters.py    # Index all images → "characters" collection (character-focused prompt)
-├── index_videos.py        # Extract first frames + index videos → "videos" collection
+├── index_videos.py        # Sample frames throughout each clip + index videos → "videos" collection
 ├── static/
 │   └── index.html         # Single-page browser UI
 ├── chroma_db/             # Local ChromaDB vector store (git-ignored)
-├── video_frames/          # Extracted first-frame JPEGs for each video (git-ignored)
+├── video_frames/          # Extracted sample JPEGs for each video (git-ignored)
 ├── exclusions.json        # Per-character flagged filename lists
 └── .gitignore
 ```
@@ -96,9 +96,21 @@ python index_images.py
 # Index images for character/visual-similarity search
 python index_characters.py
 
-# Extract first frames and index videos
+# Sample videos every 2 seconds (default), including the first and last frame
 python index_videos.py
+
+# Use denser sampling, or select a different folder
+python index_videos.py --interval 1 --video-dir /path/to/videos
 ```
+
+Video indexing automatically upgrades existing first-frame records. It stores one embedding per
+sample and resumes successful frames on reruns. Changing the interval or modifying a video
+reindexes that clip; old records are removed only after its replacement succeeds. Search returns
+one result per video, with the best matching sample's thumbnail and timestamp. Hover previews
+start at that moment. Restart the server after indexing to reload its media paths.
+
+Smaller intervals improve coverage but increase embedding requests, indexing time, and storage.
+Brief events between samples can still be missed. Sampling does not search dialogue or audio.
 
 All three scripts run with up to 10 concurrent Gemini embedding requests (`CONCURRENCY = 10`) and display a `tqdm` progress bar. Rate-limit errors (HTTP 429) are handled with automatic back-off: 60 s on the first hit, 120 s on the second, then 180 s.
 
@@ -125,7 +137,7 @@ Then open `http://localhost:8000` in your browser.
 | `POST` | `/search-by-image` | `multipart/form-data`: `file`, `top_n`, `min_similarity`, `description` | Image drop search using the `characters` collection |
 | `POST` | `/search-by-character` | `{character_id, mode, top_n, min_similarity}` | Search by character profile prompt; `mode` is `"images"` or `"videos"` |
 
-All search endpoints return:
+Image search endpoints return:
 ```json
 {
   "results": [
@@ -133,6 +145,10 @@ All search endpoints return:
   ]
 }
 ```
+
+Video searches (including character searches in video mode) additionally return `timestamp`
+(seconds) and `frame_id` for each result. `/frame/{filename}?frame_id=...` serves the matched
+sample; `/count-videos` counts distinct clips, rather than indexed frames.
 
 Similarity is on a 0–100 scale derived from cosine distance (`similarity = (1 − cosine_distance) × 100`).
 

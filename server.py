@@ -12,6 +12,8 @@ from google.genai import types
 import chromadb
 from chromadb.config import Settings
 
+from video_search import search_video_frames
+
 DB_PATH = "./chroma_db"
 COLLECTION_NAME = "images"
 CHARACTER_COLLECTION_NAME = "characters"
@@ -273,30 +275,19 @@ async def search_videos(req: SearchRequest):
     response = genai_client.models.embed_content(model=EMBED_MODEL, contents=[req.query])
     query_vector = list(response.embeddings[0].values)
 
-    fetch_n = min(req.top_n * 3, video_collection.count())
-    if fetch_n == 0:
-        return {"results": []}
-
-    results = video_collection.query(
-        query_embeddings=[query_vector],
-        n_results=fetch_n,
-        include=["metadatas", "distances"],
-    )
-
-    output = []
-    for meta, dist in zip(results["metadatas"][0], results["distances"][0]):
-        sim = round(max(0.0, (1.0 - dist)) * 100, 1)
-        if sim < req.min_similarity:
-            continue
-        output.append({"filename": meta["filename"], "similarity": sim})
-        if len(output) == req.top_n:
-            break
-    return {"results": output}
+    return {"results": search_video_frames(
+        video_collection, query_vector, req.top_n, req.min_similarity,
+    )}
 
 
 @app.get("/frame/{filename:path}")
-async def serve_frame(filename: str):
+async def serve_frame(filename: str, frame_id: str | None = None):
     frame_path = VIDEO_FRAME_LOOKUP.get(filename)
+    if frame_id is not None:
+        result = video_collection.get(ids=[frame_id], include=["metadatas"])
+        metadata = result["metadatas"]
+        frame_path = (metadata[0]["frame_path"]
+                      if metadata and metadata[0]["filename"] == filename else None)
     if not frame_path or not os.path.exists(frame_path):
         raise HTTPException(status_code=404, detail="Frame not found")
     return FileResponse(frame_path, media_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
@@ -323,7 +314,8 @@ async def open_video_in_finder(filename: str):
 
 @app.get("/count-videos")
 async def count_videos():
-    return {"count": video_collection.count()}
+    metadata = video_collection.get(include=["metadatas"])["metadatas"]
+    return {"count": len({m["filename"] for m in metadata})}
 
 
 @app.get("/characters")
@@ -370,7 +362,12 @@ async def search_by_character(req: CharacterSearchRequest):
     response = genai_client.models.embed_content(model=EMBED_MODEL, contents=[char["prompt"]])
     query_vector = list(response.embeddings[0].values)
 
-    target = video_collection if req.mode == "videos" else collection
+    if req.mode == "videos":
+        return {"results": search_video_frames(
+            video_collection, query_vector, req.top_n, req.min_similarity,
+            exclusions.get(req.character_id, set()),
+        )}
+    target = collection
     count = target.count()
     if count == 0:
         return {"results": []}

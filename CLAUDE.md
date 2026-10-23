@@ -11,7 +11,7 @@ uvicorn server:app --reload
 # Index images (run each once, re-run to pick up new files)
 python3 index_images.py        # general content search → 'images' collection
 python3 index_characters.py    # character/creature search → 'characters' collection
-python3 index_videos.py        # video first-frame search → 'videos' collection
+python3 index_videos.py        # sampled video search (default: every 2 seconds) → 'videos' collection
 python3 index_visual.py        # pure visual similarity → 'visual' collection (AIMv2, local)
 
 # Install dependencies
@@ -28,7 +28,7 @@ pip3 install fastapi uvicorn google-genai chromadb opencv-python tqdm transforme
 |---|---|---|---|
 | `images` | `index_images.py` | Gemini `gemini-embedding-2-preview` (Vertex AI) | `"What is shown in this image?"` |
 | `characters` | `index_characters.py` | Gemini | Character appearance description |
-| `videos` | `index_videos.py` | Gemini | First frame of each video |
+| `videos` | `index_videos.py` | Gemini | Sampled frames throughout each video |
 | `visual` | `index_visual.py` | AIMv2 3B (local, MPS/CPU) | Mean-pooled patch tokens, L2-normalised |
 
 All collections use cosine space (`hnsw:space: cosine`). Similarity is computed as `(1 − cosine_distance) × 100`.
@@ -46,7 +46,7 @@ All collections use cosine space (`hnsw:space: cosine`). Similarity is computed 
 
 - All skip already-indexed files by checking `collection.get(include=[])["ids"]`.
 - `index_images.py` / `index_characters.py`: async concurrent Gemini calls (concurrency=10), tqdm progress, 3-attempt backoff on 429.
-- `index_videos.py`: two phases — sync OpenCV frame extraction → async Gemini embedding.
+- `index_videos.py`: OpenCV samples every `--interval` seconds (default 2), plus the last frame; Gemini embeds samples concurrently. IDs include a file/interval signature, reruns resume, and successful upgrades remove old records. `video_search.py` deduplicates matches to the best frame per clip.
 - `index_visual.py`: sync batched inference (batch_size=4) using HuggingFace `transformers`, MPS device on Apple Silicon.
 
 ### Frontend (`static/index.html`)
@@ -59,7 +59,7 @@ Single-file vanilla JS, no build step. Four search modes dispatched from the for
 - **Visual** — `POST /search-by-visual-image` (AIMv2, auto-submits on image drop/paste, text input disabled)
 - **Character pills** — `POST /search-by-character` (Gemini, filters via `exclusions`)
 
-`renderResults` renders image cards for all non-video modes; video cards add hover-to-play inline preview.
+`renderResults` renders image cards for all non-video modes; video cards show matching timestamps and start hover-to-play inline previews at the matched frame.
 
 ### Key paths (hardcoded, update per environment)
 
