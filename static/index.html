@@ -638,17 +638,19 @@
       if (isVideos) {
         const timestamp = Math.max(0, Number(item.timestamp) || 0);
         const timeLabel = `${Math.floor(timestamp / 60)}:${String(Math.floor(timestamp % 60)).padStart(2, '0')}`;
+        const videoEncoded = encodeURIComponent(item.video_id || item.filename);
         const frameQuery = item.frame_id ? `?frame_id=${encodeURIComponent(item.frame_id)}` : '';
         card.innerHTML = `
           <img src="/frame/${encoded}${frameQuery}" loading="lazy" decoding="async" alt="">
-          <video src="/video/${encoded}#t=${timestamp}" preload="none" muted loop playsinline></video>
+          <video src="/video/${videoEncoded}#t=${timestamp}" preload="none" muted loop playsinline></video>
           <div class="card-play-badge">▶ ${timeLabel}</div>
           <div class="card-overlay">
             <div class="card-similarity">${item.similarity}%</div>
             <div class="card-name">${item.filename}</div>
-            <button class="card-btn" data-fn="${encoded}" data-prefix="${openPrefix}">Open in Finder</button>
+            <button class="card-btn" data-fn="${videoEncoded}" data-prefix="${openPrefix}">Open in Finder</button>
           </div>`;
 
+        card.querySelector('.card-name').textContent = item.folder ? `${item.folder} / ${item.filename}` : item.filename;
         const img = card.querySelector('img');
         const vid = card.querySelector('video');
         const seekToMatch = () => { vid.currentTime = timestamp; };

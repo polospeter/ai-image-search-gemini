@@ -101,13 +101,20 @@ python index_videos.py
 
 # Use denser sampling, or select a different folder
 python index_videos.py --interval 1 --video-dir /path/to/videos
+
+# Search scattered scene folders, retaining their original locations
+python index_videos.py --recursive --video-dir /path/to/episode --video-dir /path/to/unsorted
+
+# Check the scope without making embedding requests
+python index_videos.py --recursive --video-dir /path/to/episode --dry-run
 ```
 
 Video indexing automatically upgrades existing first-frame records. It stores one embedding per
 sample and resumes successful frames on reruns. Changing the interval or modifying a video
 reindexes that clip; old records are removed only after its replacement succeeds. Search returns
 one result per video, with the best matching sample's thumbnail and timestamp. Hover previews
-start at that moment. Restart the server after indexing to reload its media paths.
+start at that moment. Restart the server after indexing to reload its media paths. Clips are identified by their full
+source path, so identical filenames in different scene folders remain separate.
 
 Smaller intervals improve coverage but increase embedding requests, indexing time, and storage.
 Brief events between samples can still be missed. Sampling does not search dialogue or audio.

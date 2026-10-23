@@ -1,6 +1,11 @@
 """Sampling and retrieval helpers shared by the video indexer and server."""
 
 import math
+from pathlib import Path
+
+
+def video_key(metadata):
+    return metadata.get("video_id", metadata.get("video_path", metadata["filename"]))
 
 
 def sample_frames(frame_count, fps, interval):
@@ -36,11 +41,13 @@ def search_video_frames(collection, vector, top_n, min_similarity, excluded=()):
                 below_threshold = True
                 break
             filename = meta["filename"]
-            if filename in seen or filename in excluded:
+            key = video_key(meta)
+            if key in seen or key in excluded or filename in excluded:
                 continue
-            seen.add(filename)
+            seen.add(key)
             output.append({
-                "filename": filename, "similarity": similarity,
+                "filename": filename, "similarity": similarity, "video_id": key,
+                "folder": Path(meta["video_path"]).parent.name if "video_path" in meta else "",
                 "timestamp": meta.get("timestamp", 0.0), "frame_id": frame_id,
             })
             if len(output) == top_n:

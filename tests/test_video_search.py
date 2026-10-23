@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace as NS
 from unittest.mock import patch
 
-from index_videos import index_video
+from index_videos import index_video, collect_videos
 from video_search import sample_frames, search_video_frames
 
 
@@ -36,6 +36,28 @@ class SearchTests(unittest.TestCase):
         self.assertEqual(calls, [6, 12, 13])
         self.assertEqual([r['filename'] for r in search_video_frames(collection, [1], 2, 35, {'a.mp4'})], ['b.mp4'])
         self.assertEqual(len(search_video_frames(collection, [1], 2, 95)), 1)
+
+    def test_same_filename_in_different_folders(self):
+        collection = NS(count=lambda: 2, query=lambda **kw: {
+            'ids': [['frame-a', 'frame-b']],
+            'metadatas': [[
+                {'filename': 'take.mp4', 'video_path': '/scene-a/take.mp4', 'video_id': 'a'},
+                {'filename': 'take.mp4', 'video_path': '/scene-b/take.mp4', 'video_id': 'b'},
+            ]], 'distances': [[.1, .2]],
+        })
+        results = search_video_frames(collection, [1], 2, 35)
+        self.assertEqual([r['video_id'] for r in results], ['a', 'b'])
+        self.assertEqual([r['folder'] for r in results], ['scene-a', 'scene-b'])
+
+    def test_recursive_discovery_deduplicates_overlapping_roots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            scene = root / 'scene'; scene.mkdir()
+            (root / 'take.mp4').touch()
+            (scene / 'take.mp4').touch()
+            (scene / 'notes.txt').touch()
+            self.assertEqual(len(collect_videos([root])), 1)
+            self.assertEqual(len(collect_videos([root, scene], recursive=True)), 2)
 
     def test_empty_and_legacy_indexes(self):
         self.assertEqual(search_video_frames(NS(count=lambda: 0), [1], 2, 35), [])

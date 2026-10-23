@@ -27,7 +27,7 @@ async def index_video(path, interval, frames_dir, collection, client, semaphore,
     signature = hashlib.sha256(
         f"{path}:{stat.st_size}:{stat.st_mtime_ns}:{interval}:v2".encode()
     ).hexdigest()
-    existing = collection.get(where={"filename": path.name}, include=["metadatas"])
+    existing = collection.get(where={"video_path": str(path)}, include=["metadatas"])
     existing_ids = set(existing["ids"])
     cap = cv2.VideoCapture(str(path))
     try:
@@ -68,6 +68,7 @@ async def index_video(path, interval, frames_dir, collection, client, semaphore,
                         ids=[frame_id], embeddings=[list(response.embeddings[0].values)],
                         metadatas=[{
                             "filename": path.name, "video_path": str(path),
+                            "video_id": hashlib.sha256(str(path).encode()).hexdigest(),
                             "frame_path": str(frame_path), "timestamp": timestamp,
                         }],
                     )
@@ -90,16 +91,26 @@ async def index_video(path, interval, frames_dir, collection, client, semaphore,
     return True
 
 
+def collect_videos(directories, recursive=False):
+    paths = set()
+    for directory in directories:
+        entries = directory.rglob("*") if recursive else directory.iterdir()
+        paths.update(p.resolve() for p in entries if p.is_file() and p.suffix.lower() in VIDEO_EXTS)
+    return sorted(paths, key=lambda p: p.stat().st_mtime, reverse=True)
+
+
 async def main(args):
     import chromadb
     from chromadb.config import Settings
     from google import genai
     from tqdm import tqdm
 
-    paths = sorted(
-        (p.resolve() for p in args.video_dir.iterdir() if p.is_file() and p.suffix.lower() in VIDEO_EXTS),
-        key=lambda p: p.stat().st_mtime, reverse=True,
-    )
+    paths = collect_videos(args.video_dir, args.recursive)
+    print(f"Found {len(paths)} videos; sampling every {args.interval:g} seconds.", flush=True)
+    if args.dry_run:
+        for path in paths:
+            print(path)
+        return 0
     frames_dir = Path(FRAMES_DIR).resolve()
     frames_dir.mkdir(parents=True, exist_ok=True)
     client = genai.Client(vertexai=True, project="ai-search-agent-491514", location="us-central1")
@@ -124,11 +135,14 @@ async def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--video-dir", type=Path, default=Path(VIDEO_DIR))
+    parser.add_argument("--video-dir", type=Path, action="append", help="Source folder; repeat for multiple folders")
+    parser.add_argument("--recursive", action="store_true", help="Include all source subfolders")
+    parser.add_argument("--dry-run", action="store_true", help="List videos without embedding or changing the index")
     parser.add_argument("--interval", type=float, default=2.0, help="Seconds between samples (default: 2)")
     args = parser.parse_args()
     if not math.isfinite(args.interval) or args.interval <= 0:
         parser.error("--interval must be positive and finite")
-    if not args.video_dir.is_dir():
-        parser.error("--video-dir must be an existing directory")
+    args.video_dir = args.video_dir or [Path(VIDEO_DIR)]
+    if any(not directory.is_dir() for directory in args.video_dir):
+        parser.error("Every --video-dir must be an existing directory")
     raise SystemExit(asyncio.run(main(args)))

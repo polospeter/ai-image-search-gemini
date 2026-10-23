@@ -12,7 +12,7 @@ from google.genai import types
 import chromadb
 from chromadb.config import Settings
 
-from video_search import search_video_frames
+from video_search import search_video_frames, video_key
 
 DB_PATH = "./chroma_db"
 COLLECTION_NAME = "images"
@@ -110,7 +110,8 @@ _meta = collection.get(include=["metadatas"])
 PATH_LOOKUP = {m["filename"]: m["path"] for m in _meta["metadatas"]}
 
 _video_meta = video_collection.get(include=["metadatas"])
-VIDEO_PATH_LOOKUP  = {m["filename"]: m["video_path"] for m in _video_meta["metadatas"]}
+VIDEO_PATH_LOOKUP = {m["filename"]: m["video_path"] for m in _video_meta["metadatas"]}
+VIDEO_PATH_LOOKUP.update({video_key(m): m["video_path"] for m in _video_meta["metadatas"]})
 VIDEO_FRAME_LOOKUP = {m["filename"]: m["frame_path"] for m in _video_meta["metadatas"]}
 
 _visual_meta = visual_collection.get(include=["metadatas"])
@@ -315,7 +316,7 @@ async def open_video_in_finder(filename: str):
 @app.get("/count-videos")
 async def count_videos():
     metadata = video_collection.get(include=["metadatas"])["metadatas"]
-    return {"count": len({m["filename"] for m in metadata})}
+    return {"count": len({video_key(m) for m in metadata})}
 
 
 @app.get("/characters")

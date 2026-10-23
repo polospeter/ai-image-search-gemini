@@ -46,7 +46,7 @@ All collections use cosine space (`hnsw:space: cosine`). Similarity is computed 
 
 - All skip already-indexed files by checking `collection.get(include=[])["ids"]`.
 - `index_images.py` / `index_characters.py`: async concurrent Gemini calls (concurrency=10), tqdm progress, 3-attempt backoff on 429.
-- `index_videos.py`: OpenCV samples every `--interval` seconds (default 2), plus the last frame; Gemini embeds samples concurrently. IDs include a file/interval signature, reruns resume, and successful upgrades remove old records. `video_search.py` deduplicates matches to the best frame per clip.
+- `index_videos.py`: OpenCV samples every `--interval` seconds (default 2), plus the last frame; Gemini embeds samples concurrently. IDs include a file/interval signature, reruns resume, and successful upgrades remove old records. `video_search.py` deduplicates matches to the best frame per clip. Repeat `--video-dir` and add `--recursive` for scattered folders; `--dry-run` lists scope. Metadata `video_id` identifies each full source path, preserving same-named clips.
 - `index_visual.py`: sync batched inference (batch_size=4) using HuggingFace `transformers`, MPS device on Apple Silicon.
 
 ### Frontend (`static/index.html`)
