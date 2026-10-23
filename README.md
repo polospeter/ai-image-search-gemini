@@ -224,3 +224,14 @@ The default `min_similarity` is **35%**. Results below this threshold are discar
 - The ChromaDB store lives in `./chroma_db/` and is excluded from git. Back it up separately if you want to preserve your index.
 - `video_frames/` is also excluded from git; it is regenerated automatically when you re-run `index_videos.py`.
 - Avatar images are looked up first in the ChromaDB `PATH_LOOKUP` (already-indexed files), then by falling back to the paths listed in `CHARACTER_AVATAR_DIRS`.
+
+## Take Picker integration
+
+Take Picker's **Media search** tab embeds this UI, opens in Videos mode, and starts the
+local backend when needed. The picker uses `GET /health` to check availability and video
+counts. Search and playback include clips added by a running indexer without restarting
+the backend. `/?mode=videos` also opens the standalone UI directly in Videos mode.
+
+The picker launcher defaults to `~/orca/ai-image-search-gemini` and port `8766`.
+Set `MEDIA_SEARCH_REPO` or `MEDIA_SEARCH_PORT` in the picker environment to override them.
+Its service log is `~/.config/take-picker/media-search.log`.

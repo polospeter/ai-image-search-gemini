@@ -178,8 +178,30 @@ class FlagRequest(BaseModel):
     filename: str
 
 
+def video_count():
+    metadata = video_collection.get(include=["metadatas"])["metadatas"]
+    return len({video_key(m) for m in metadata})
+
+
+def lookup_video_path(key):
+    path = VIDEO_PATH_LOOKUP.get(key)
+    if path:
+        return path
+    # Clips can finish indexing while this service is running.
+    result = video_collection.get(where={"video_id": key}, limit=1, include=["metadatas"])
+    return result["metadatas"][0]["video_path"] if result["metadatas"] else None
+
+
+@app.get("/health")
+async def health():
+    return {"service": "automata-media-search", "videos": video_count(),
+            "frames": video_collection.count(), "images": collection.count()}
+
+
 @app.post("/search")
 async def search(req: SearchRequest):
+    if collection.count() == 0:
+        return {"results": []}
     response = genai_client.models.embed_content(model=EMBED_MODEL, contents=[req.query])
     query_vector = list(response.embeddings[0].values)
 
@@ -253,6 +275,8 @@ async def search_by_image(
 
     fetch_n = min(top_n * 3, char_collection.count()) if char_collection.count() > 0 else min(top_n * 3, collection.count())
     target = char_collection if char_collection.count() > 0 else collection
+    if fetch_n == 0:
+        return {"results": []}
     results = target.query(
         query_embeddings=[query_vector],
         n_results=fetch_n,
@@ -296,7 +320,7 @@ async def serve_frame(filename: str, frame_id: str | None = None):
 
 @app.get("/video/{filename:path}")
 async def serve_video(filename: str):
-    path = VIDEO_PATH_LOOKUP.get(filename)
+    path = lookup_video_path(filename)
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Video not found")
     ext = Path(path).suffix.lower()
@@ -306,7 +330,7 @@ async def serve_video(filename: str):
 
 @app.get("/open-video/{filename:path}")
 async def open_video_in_finder(filename: str):
-    path = VIDEO_PATH_LOOKUP.get(filename)
+    path = lookup_video_path(filename)
     if not path or not os.path.exists(path):
         raise HTTPException(status_code=404, detail="Video not found")
     subprocess.Popen(["open", "-R", path])
@@ -315,8 +339,7 @@ async def open_video_in_finder(filename: str):
 
 @app.get("/count-videos")
 async def count_videos():
-    metadata = video_collection.get(include=["metadatas"])["metadatas"]
-    return {"count": len({video_key(m) for m in metadata})}
+    return {"count": video_count()}
 
 
 @app.get("/characters")
@@ -374,6 +397,8 @@ async def search_by_character(req: CharacterSearchRequest):
         return {"results": []}
 
     fetch_n = min(req.top_n * 3, count)
+    if fetch_n == 0:
+        return {"results": []}
     results = target.query(
         query_embeddings=[query_vector],
         n_results=fetch_n,

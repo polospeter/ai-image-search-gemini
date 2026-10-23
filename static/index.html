@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Image Search</title>
+  <title>Media Search</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -774,6 +774,11 @@
       searchBtn.textContent = 'Search';
     }
   });
+  const initialMode = new URLSearchParams(location.search).get('mode');
+  if (initialMode === 'videos') btnVideos.click();
+  else if (initialMode === 'visual') btnVisual.click();
+  // Keep the library count current while a background indexer adds clips.
+  setInterval(() => { if (grid.style.display === 'none') updateCount(); }, 15000);
 </script>
 </body>
 </html>
